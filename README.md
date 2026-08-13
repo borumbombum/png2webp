@@ -1,7 +1,7 @@
 # png2webp
 
 Convert PNG images to WebP from the command line — single file or a whole
-directory at once.
+directory (optionally recursive) at once.
 
 Written in pure Go — just `go build`, no system dependencies to install.
 
@@ -48,14 +48,24 @@ png2webp -dir ./images
 Each `some.png` in the folder becomes `some.webp` right next to it,
 non-recursively.
 
+### Convert a directory and its subfolders
+
+```bash
+png2webp -dir ./images -r
+```
+
+Same as above, but also walks into every subfolder. Each `.webp` is
+written next to its source `.png`, wherever it is in the tree.
+
 ### Example output
 
 ```
-$ png2webp -dir ./images
+$ png2webp -dir ./images -r
   images/icon.png: 1007 B -> 518 B (48.6% smaller, lossless)
   images/photo.png: 245.4 KB -> 50.8 KB (79.3% smaller, lossy)
   images/noise.png: kept as PNG — lossy WebP (88.2 KB) wasn't smaller than the original (88.2 KB); use -force to write anyway
-done: 2 converted, 1 skipped
+  images/thumbs/small.png: 12.1 KB -> 4.3 KB (64.5% smaller, lossy)
+done: 3 converted, 1 skipped
 ```
 
 ## Flags
@@ -65,6 +75,7 @@ done: 2 converted, 1 skipped
 | `-in <file>`       | —           | Convert a single PNG file                                       |
 | `-out <file>`      | `<in>.webp` | Output path for `-in` (ignored with `-dir`)                     |
 | `-dir <folder>`    | —           | Convert every `.png` in a folder                                |
+| `-r`               | off         | With `-dir`, also convert `.png` files in subfolders            |
 | `-quality <0-100>` | `90`        | Quality used for the lossy candidate                            |
 | `-lossless`        | off         | Skip the comparison, force lossless only                        |
 | `-lossy`           | off         | Skip the comparison, force lossy only                           |
@@ -84,10 +95,13 @@ png2webp -in icon.png -lossless
 
 # Batch-convert a folder, always writing output even if bigger than the PNG
 png2webp -dir ./images -force
+
+# Convert an entire asset tree in one go
+png2webp -dir ./assets -r -quality 85
 ```
 
 ## Notes
 
-- Only top-level `.png` files in a `-dir` are processed (no recursion into subfolders).
+- Without `-r`, only top-level `.png` files in a `-dir` are processed (no recursion into subfolders).
 - Lossless encoding is pixel-perfect — a round-trip decode matches the source exactly.
 - Non-PNG files passed to `-in` are rejected with a clear error.

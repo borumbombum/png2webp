@@ -14,10 +14,9 @@
 //
 // Usage:
 //
-//	go run main.go -in photo.png -out photo.webp
-//	go run main.go -dir ./images     // convert every .png in a folder
-//
-//	go run main.go -dir ./images -lossy -quality 85
+//	go run main.go -in photo.png -out photo.webp -quality 85
+//	go run main.go -dir ./images         // convert every .png in a folder
+//	go run main.go -dir ./images -r      // also recurse into subfolders
 package main
 
 import (
@@ -26,6 +25,7 @@ import (
 	"fmt"
 	"image"
 	_ "image/png"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +39,7 @@ func main() {
 	inPath := flag.String("in", "", "input PNG file")
 	outPath := flag.String("out", "", "output WebP file (default: same name, .webp extension)")
 	dir := flag.String("dir", "", "convert all .png files in this directory")
+	recursive := flag.Bool("r", false, "with -dir, also convert .png files in subfolders")
 	quality := flag.Float64("quality", defaultLossyQuality, "WebP quality, 0-100 (used for the lossy candidate)")
 	lossless := flag.Bool("lossless", false, "force lossless encoding only (skip the auto best-of comparison)")
 	lossy := flag.Bool("lossy", false, "force lossy encoding only (skip the auto best-of comparison)")
@@ -58,7 +59,7 @@ func main() {
 
 	switch {
 	case *dir != "":
-		if err := convertDir(*dir, float32(*quality), m, *force); err != nil {
+		if err := convertDir(*dir, float32(*quality), m, *force, *recursive); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
@@ -193,25 +194,18 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
 }
 
-// convertDir converts every *.png file in a directory (non-recursive).
-func convertDir(dir string, quality float32, m mode, force bool) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("reading dir %s: %w", dir, err)
-	}
-
+// convertDir converts every *.png file in a directory. With recursive
+// set, it also walks into subfolders.
+func convertDir(dir string, quality float32, m mode, force, recursive bool) error {
 	converted, skipped := 0, 0
-	for _, e := range entries {
-		if e.IsDir() || strings.ToLower(filepath.Ext(e.Name())) != ".png" {
-			continue
-		}
-		in := filepath.Join(dir, e.Name())
+
+	process := func(in string) {
 		out := strings.TrimSuffix(in, filepath.Ext(in)) + ".webp"
 		wrote, err := convertFile(in, out, quality, m, force)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "skipping %s: %v\n", in, err)
 			skipped++
-			continue
+			return
 		}
 		if wrote {
 			converted++
@@ -219,6 +213,34 @@ func convertDir(dir string, quality float32, m mode, force bool) error {
 			skipped++
 		}
 	}
+
+	if recursive {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || strings.ToLower(filepath.Ext(d.Name())) != ".png" {
+				return nil
+			}
+			process(path)
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("walking dir %s: %w", dir, err)
+		}
+	} else {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return fmt.Errorf("reading dir %s: %w", dir, err)
+		}
+		for _, e := range entries {
+			if e.IsDir() || strings.ToLower(filepath.Ext(e.Name())) != ".png" {
+				continue
+			}
+			process(filepath.Join(dir, e.Name()))
+		}
+	}
+
 	fmt.Printf("done: %d converted, %d skipped\n", converted, skipped)
 	return nil
 }
