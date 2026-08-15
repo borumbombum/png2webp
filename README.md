@@ -1,4 +1,4 @@
-# png2webp
+# img2webp
 
 Convert PNG and JPEG images to WebP from the command line — single file or
 a whole directory (optionally recursive) at once.
